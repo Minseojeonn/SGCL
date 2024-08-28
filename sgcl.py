@@ -54,15 +54,11 @@ het_node_feat_dict['user'] = user_feat
     
 ############################################### Load Train Graph ############################################################
 
-
-with open(f"./bitcoin_alpha/g_train.pkl", "rb") as f:
-    tmp_het_data_dict = pickle.load(f)
-    tmp_het_edata_dict2 = tmp_het_data_dict
-    
-train_positive = train_X[train_Y==1]
+train_positive = train_X[train_Y==1].T
 train_negative = train_X[train_Y==0].T
 tmp_het_data_dict = {('user', 'positive', 'user'): (train_positive[0], train_positive[1]), ('user', 'negative', 'user'): (train_negative[0], train_negative[1])}
 het_data_dict.update(tmp_het_data_dict)
+
 
 graph_user = dgl.heterograph(
     data_dict = het_data_dict,
@@ -1202,7 +1198,7 @@ args.drop_type = 'both'
 # 2-layer 20
 
 device = torch.device(f'cuda:{args.gpu}')
-
+breakpoint()
 
 
 
