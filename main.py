@@ -50,12 +50,14 @@ from dgl.utils import expand_as_pair
 from dgl.nn import edge_softmax
 from dgl.nn import utils
 import numpy as np
+from parser import parsing
 warnings.filterwarnings("ignore")
 def main():
-    seed = 100
-    dataset_name = 'bonanza'
-    input_dim = 16
-    device = 'cuda:0'
+    arg = parsing()
+    seed = arg.seed
+    dataset_name = arg.dataset_name
+    input_dim = arg.input_dim
+    device = arg.device
     ############################################### Load Dataset ############################################################
     set_random_seed(seed, device)
     path = 'datasets/' + dataset_name + '.tsv'
@@ -106,7 +108,6 @@ def main():
 
     args = DotMap()
     args.num_nodes = graph_user.num_nodes()
-
     args.pos_edge_type = ['positive']
     args.neg_edge_type = ['negative']
     args.edge_type = args.pos_edge_type+args.neg_edge_type
@@ -115,9 +116,9 @@ def main():
     args.dim_hiddens = args.dim_features*2
     args.dim_embs = args.dim_features*2
 
-    args.learning_rate = 0.01
+    args.learning_rate = arg.lr
 
-    args.conv_depth = 2
+    args.conv_depth = arg.num_layers
     args.loss_batch_size = 102400             # to calculated loss
 
     #args.inference_batch_size = 128       # the batch size for inferencing all/batched nodes embeddings
@@ -143,17 +144,15 @@ def main():
     # pos / neg / intra / inter / all
     args.contrast_type = 'all'
     # delete / change / reverse / composite
-    args.augment = 'change'
+    args.augment = arg.augment
 
     #args.contrastive = True
-    args.mask_ratio = 0.1
-    args.tao = 0.05
-    args.alpha = 1e-4
-    args.beta = 0.8
+    args.mask_ratio = arg.mask_ratio
+    args.tao = arg.tao  
+    args.alpha = arg.alpha
+    args.beta = arg.beta
     args.pos_gamma = 1
     args.neg_gamma = 1
-
-    args.gpu = 0
     args.num_workers = 0
     args.verbose = 1
     args.pretrain_epochs = 101
@@ -163,7 +162,7 @@ def main():
 
     # 2-layer 20
 
-    device = torch.device(f'cuda:{args.gpu}')
+    device = arg.device
 
 
     label_train = df_train
@@ -195,7 +194,7 @@ def main():
         g = graph_user.edge_type_subgraph(args.edge_type)
         pos_weight = None
         model = Model(args).to(device)
-        opt = torch.optim.Adam(model.parameters())
+        opt = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
 
         dataset = NodeBatch(np.arange(g.num_nodes()))
         dataloader_nodes = torch.utils.data.DataLoader(dataset, batch_size=args.loss_batch_size, shuffle=True)
