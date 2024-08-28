@@ -4,6 +4,7 @@ from collections import defaultdict
 from itertools import product
 import random
 from dotmap import DotMap
+from utils import logging_with_mlflow_metric
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -51,6 +52,7 @@ from dgl.nn import edge_softmax
 from dgl.nn import utils
 import numpy as np
 from parser import parsing
+import mlflow
 warnings.filterwarnings("ignore")
 def main():
     arg = parsing()
@@ -229,18 +231,25 @@ def main():
                 opt.step()
                 cnt += 1
 
-                
-                
-                
                 with torch.no_grad():
                     embs, (attn_attr_pos, attn_stru_pos, attn_attr_neg, attn_stru_neg) = model.inference(g, g, label_ids, device)
                     train_auc, train_prec, train_recl, train_micro_f1, train_binary_f1, train_macro_f1 = eval_metric(embs, model, label_train, args, device)
                     test_auc, test_prec, test_recl, test_micro_f1, test_binary_f1, test_macro_f1 = eval_metric(embs, model, label_test, args, device)
                     val_auc, val_prec, val_recl, val_micro_f1, val_binary_f1, val_macro_f1 = eval_metric(embs, model, label_val, args, device)
-                    res['train'].append([train_auc, train_prec, train_recl, train_micro_f1, train_binary_f1, train_macro_f1])
-                    res['test'].append([test_auc, test_prec, test_recl, test_micro_f1, test_binary_f1, test_macro_f1])
-                    res['val'].append([val_auc, val_prec, val_recl, val_micro_f1, val_binary_f1, val_macro_f1])
+                    res['train'].append([train_auc,train_micro_f1, train_binary_f1, train_macro_f1])
+                    res['test'].append([test_auc, test_micro_f1, test_binary_f1, test_macro_f1])
+                    res['val'].append([val_auc, val_micro_f1, val_binary_f1, val_macro_f1])
                         
+    
+    remote_server_uri = "http://-:15001"
+    mlflow.set_tracking_uri(remote_server_uri)
+    experiment_name = f"Aug19-SGCL-{arg.dataset_name}-{arg.seed}"
+    mlflow.set_experiment(experiment_name)
+    mlflow.start_run()
+    mlflow.log_params(args)
+    logging_with_mlflow_metric(res)
+    
+
 
 
 

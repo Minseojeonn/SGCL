@@ -11,6 +11,7 @@ from collections import defaultdict
 from itertools import product
 import random
 from dotmap import DotMap
+import mlflow
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -354,3 +355,53 @@ def eval_metric(embs, model, df, args, device, threshold=0.05):
     
     return auc, prec, recl, micro_f1, binary_f1, macro_f1
 
+def logging_with_mlflow_metric(results):
+    # metric selected by valid score
+    best_auc_epoch, best_auc_score = -1, -float("inf")
+    best_macro_epoch, best_macro_score = -1, -float("inf")
+    best_binary_epoch, best_binary_score = -1, -float("inf")
+    best_micro_epoch, best_micro_score = -1, -float("inf")
+    for idx in tqdm(range(len(results)), desc='mlflow_uploading'):
+        train_metric, val_metric, test_metric = results['train'][idx], results['val'][idx], results['test'][idx]
+        val_auc, val_mi, val_bi, val_ma = val_metric
+    
+        if best_auc_score <= val_auc:
+            best_auc_score = val_auc
+            best_auc_epoch = idx
+        if best_binary_score <= val_bi:
+            best_binary_epoch = val_bi
+            best_binary_epoch = idx
+        if best_micro_score <= val_mi:
+            best_micro_score = val_mi
+            best_micro_epoch = idx
+        if best_macro_score <= val_ma:
+            best_macro_epoch = val_ma
+            best_macro_epoch = idx
+    
+        metrics_dict = {
+            "train_auc": train_metric["auc"],
+            "train_binary_f1": train_metric["f1-bi"],
+            "train_macro_f1": train_metric["f1-ma"],
+            "train_micro_f1": train_metric["f1-mi"],
+            "val_auc": val_metric["auc"],
+            "val_binary_f1": val_metric["f1-bi"],
+            "val_macro_f1": val_metric["f1-ma"],
+            "val_micro_f1": val_metric["f1-mi"],
+            "test_auc": test_metric["auc"],
+            "test_binary_f1": test_metric["f1-bi"],
+            "test_macro_f1": test_metric["f1-ma"],
+            "test_micro_f1": test_metric["f1-mi"]
+        }
+        mlflow.log_metrics(metrics_dict, synchronous=False, step=idx)
+
+    best_metrics_dict = {
+        "best_auc_val": results[best_auc_epoch]["valid"]["auc"],
+        "best_bi_val": results[best_binary_epoch]["valid"]["f1-bi"],
+        "best_ma_val": results[best_macro_epoch]["valid"]["f1-ma"],
+        "best_mi_val": results[best_micro_epoch]["valid"]["f1-mi"],
+        "best_auc_test": results[best_auc_epoch]["test"]["auc"],
+        "best_bi_test": results[best_binary_epoch]["test"]["f1-bi"],
+        "best_ma_test": results[best_macro_epoch]["test"]["f1-ma"],
+        "best_mi_test": results[best_micro_epoch]["test"]["f1-mi"]
+    }
+    mlflow.log_metrics(best_metrics_dict, synchronous=True)
