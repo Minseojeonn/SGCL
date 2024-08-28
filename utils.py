@@ -5,6 +5,60 @@ import torch.utils.data as data
 import random
 from sklearn.metrics import f1_score, roc_auc_score
 from sklearn.model_selection import train_test_split
+import math
+import os
+from collections import defaultdict
+from itertools import product
+import random
+from dotmap import DotMap
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC, LinearSVC
+from sklearn import metrics
+from sklearn.neighbors import kneighbors_graph
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+torch.set_default_dtype(torch.float32)
+torch.multiprocessing.set_sharing_strategy('file_system')
+import dgl
+import dgl.nn
+import dgl.function as fn
+from dgl.nn import RelGraphConv
+from dgl.utils import expand_as_pair
+from dgl.nn import edge_softmax
+import pickle
+import tqdm as tqdm
+import warnings
+from sklearn.model_selection import train_test_split
+import math
+from CLS import *
+from utils import *
+import torch
+import torch as th
+from torch import nn
+from torch.nn import init
+from torch.functional import F
+from dgl import function as fn
+from dgl.base import DGLError
+from dgl.utils import expand_as_pair
+from dgl.nn import edge_softmax
+from dgl.nn import utils
+from torch import nn
+from torch.nn import init
+from torch.functional import F
+
+from dgl import function as fn
+from dgl.base import DGLError
+from dgl.utils import expand_as_pair
+from dgl.nn import edge_softmax
+from dgl.nn import utils
+
+
+
+import numpy as np
 
 def load_data(
     dataset_path: str,
@@ -138,3 +192,165 @@ def set_random_seed(seed, device):
             torch.cuda.manual_seed_all(seed)
             torch.backends.cudnn.deterministic = True
             torch.backends.cudnn.benchmark = False
+            
+            
+def generate_mask(mask_ratio, row, column):
+    # 1 -- leave   0 -- drop
+    arr_mask_ratio = np.random.uniform(0,1,size=(row, column))
+    arr_mask = np.ma.masked_array(arr_mask_ratio, mask=(arr_mask_ratio<mask_ratio)).filled(0)
+    arr_mask = np.ma.masked_array(arr_mask, mask=(arr_mask>=mask_ratio)).filled(1)
+    return arr_mask
+
+
+def generate_attr_graph(g, args):
+    # generate noise g_attr
+    feature = g.ndata['feature']
+    attr_noise = np.random.normal(loc=0, scale=0.1, size=(feature.shape[0], feature.shape[1]))
+    attr_mask = generate_mask(args.mask_ratio, row=feature.shape[0], column=feature.shape[1])
+    noise_feature = feature*attr_mask + (1-attr_mask) * attr_noise
+    
+    g_attr = g
+    g_attr.ndata['feature'] = noise_feature.float()
+    return g_attr
+
+def generate_stru_graph(g, args):
+    # generate noise g_stru by deleting links
+    g_stru = g
+
+    if args.drop_type == 'both':
+        edge_types = args.edge_type
+    elif args.drop_type == 'pos':
+        edge_types = args.pos_edge_type
+    elif args.drop_type == 'neg':
+        edge_types = args.neg_edge_type
+        
+    for etype in edge_types:
+        etype_edges = g.edges(etype=etype)
+        # shape: (e, 2)
+        df = np.array([etype_edges[0].numpy(), etype_edges[1].numpy()]).transpose()
+        
+        # delete edges
+        edge_mask = generate_mask(args.mask_ratio, row=1, column=len(etype_edges[0])).squeeze()
+        drop_eids = torch.arange(0,len(etype_edges[0]))[edge_mask==0]
+        g_stru = dgl.remove_edges(g_stru, drop_eids, etype=etype)
+
+        # add an equal number of edges
+        add_row = []
+        add_column = []
+        index = 0
+        while index < len(drop_eids):
+            row_sample = np.random.randint(g.num_nodes())
+            column_sample = np.random.randint(g.num_nodes())
+            if (df==[row_sample, column_sample]).all(1).any() == False:
+                index += 1
+                add_row.append(row_sample)
+                add_column.append(column_sample)
+        g_stru = dgl.add_edges(g_stru, add_row, add_column, etype=etype)
+
+    g_stru.ndata['feature'] = g_stru.ndata['feature'].float()
+    return g_stru
+
+
+def generate_stru_sign_graph(g, args):
+    # generate noise g_stru by exchanging some pos/neg links
+    g_stru = g
+    
+    if args.drop_type == 'both':
+        edge_types = args.edge_type
+    elif args.drop_type == 'pos':
+        edge_types = args.pos_edge_type
+    elif args.drop_type == 'neg':
+        edge_types = args.neg_edge_type
+    
+    for etype in edge_types:
+        etype_edges = g.edges(etype=etype)
+        edge_mask = generate_mask(args.mask_ratio, row=1, column=len(etype_edges[0])).squeeze()
+        
+        # delete edges
+        drop_eids = torch.arange(0,len(etype_edges[0]))[edge_mask==0]
+        g_stru = dgl.remove_edges(g_stru, drop_eids, etype=etype)
+        
+        # add_edges
+        if etype in args.pos_edge_type:
+            g_stru = dgl.add_edges(g_stru, etype_edges[0][drop_eids], etype_edges[1][drop_eids] , etype=random.choice(args.neg_edge_type))
+        elif etype in args.neg_edge_type:
+            g_stru = dgl.add_edges(g_stru, etype_edges[0][drop_eids], etype_edges[1][drop_eids] , etype=random.choice(args.pos_edge_type))
+    g_stru.ndata['feature'] = g_stru.ndata['feature'].float()
+    return g_stru
+
+def generate_stru_status_graph(g, args):
+    g_stru = g
+    
+    if args.drop_type == 'both':
+        edge_types = args.edge_type
+    elif args.drop_type == 'pos':
+        edge_types = args.pos_edge_type
+    elif args.drop_type == 'neg':
+        edge_types = args.neg_edge_type
+    
+    for etype in edge_types:
+        etype_edges = g.edges(etype=etype)
+        edge_mask = generate_mask(args.mask_ratio, row=1, column=len(etype_edges[0]))
+        
+        # delete edges
+        drop_eids = torch.arange(0,len(etype_edges[0]))[edge_mask==0]
+        g_stru = dgl.remove_edges(g_stru, drop_eids, etype=etype)
+        
+        # add reverse_edges
+        g_stru = dgl.add_edges(g_stru, etype_edges[1][drop_eids], etype_edges[0][drop_eids], etype=etype)
+    g_stru.ndata['feature'] = g_stru.ndata['feature'].float()
+    return g_stru
+
+def GraphAug(g, args):
+    if args.augment == 'delete':     #for connectivity perturbation
+        g_attr = generate_stru_graph(g, args)
+        g_stru = generate_stru_graph(g, args)
+    elif args.augment == 'change':          #for sign perturbation
+        g_attr = generate_stru_sign_graph(g, args)
+        g_stru = generate_stru_sign_graph(g, args)
+    elif args.augment == 'reverse':
+        g_attr = generate_stru_status_graph(g, args)
+        g_stru = generate_stru_status_graph(g, args)
+    elif args.augment == 'composite':
+        g_attr = generate_stru_sign_graph(g, args)
+        g_stru = generate_stru_graph(g, args)
+    return g_attr, g_stru
+
+
+
+def eval_model(embs, model, df, batched, args, device):
+    if batched:
+        dataset = LabelPairs(df)
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.loss_batch_size, num_workers=args.num_workers, shuffle=True)
+        y_pre_list = []
+        y_true_list = []
+        for pair, y in dataloader:
+            uids, vids = pair.T
+            score  = model.predict_combine(embs, uids, vids, device)
+            y_pre_list.append(torch.sigmoid(score))
+            y_true_list.append(y)
+        y_pre = torch.cat(y_pre_list, dim=-1).cpu().numpy()
+        y_true = torch.cat(y_true_list, dim=-1).cpu().numpy()
+    else:
+        uids = torch.from_numpy(df.src.values).long()
+        vids = torch.from_numpy(df.dst.values).long()
+        score  = model.predict_combine(embs, uids, vids, device)
+        y_pre = torch.sigmoid(score).cpu().numpy()
+        y_true = df['label'].values
+    return y_true, y_pre
+    
+def eval_metric(embs, model, df, args, device, threshold=0.05):
+	# change threshold according to different datasets
+	# 0.05 for Alpha, 0.1 for OTC
+    y_true, y_pre = eval_model(embs, model, df, args.eval_batched, args, device)
+    y = (y_pre > threshold)
+    auc = metrics.roc_auc_score(y_true, y_pre)
+    prec = metrics.precision_score(y_true, y)
+    recl = metrics.recall_score(y_true, y)
+    binary_f1 = metrics.f1_score(y_true, y, average='binary')
+    micro_f1 = metrics.f1_score(y_true, y, average='micro')
+    macro_f1 = metrics.f1_score(y_true, y, average='macro')
+    
+    
+    return auc, prec, recl, micro_f1, binary_f1, macro_f1
+
