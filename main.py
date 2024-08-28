@@ -191,7 +191,7 @@ def main():
     It stores the mean values in the test_results list.
     """
     test_results = []
-
+    args.epochs = arg.num_epochs
     for m in range(1):
         g = graph_user.edge_type_subgraph(args.edge_type)
         pos_weight = None
@@ -206,7 +206,7 @@ def main():
         dataloader_labels = torch.utils.data.DataLoader(dataset, batch_size=int(args.loss_batch_size*len(label_train)/g.num_nodes()), shuffle=True)
         res = defaultdict(list)
 
-        for e in range(args.pretrain_epochs+args.finetune_epochs):
+        for e in range(args.epochs):
             g_attr, g_stru = GraphAug(g, args)
             cnt = 0
 
@@ -241,7 +241,7 @@ def main():
                     res['val'].append([val_auc, val_micro_f1, val_binary_f1, val_macro_f1])
                         
     
-    remote_server_uri = "http://-:15001"
+    remote_server_uri = "http://192.168.50.2:5001"
     mlflow.set_tracking_uri(remote_server_uri)
     experiment_name = f"Aug19-SGCL-{arg.dataset_name}-{arg.seed}"
     mlflow.set_experiment(experiment_name)
