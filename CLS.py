@@ -42,15 +42,11 @@ from dgl.nn import utils
 from torch import nn
 from torch.nn import init
 from torch.functional import F
-
 from dgl import function as fn
 from dgl.base import DGLError
 from dgl.utils import expand_as_pair
 from dgl.nn import edge_softmax
 from dgl.nn import utils
-
-
-
 import numpy as np
 class LabelPairs(torch.utils.data.Dataset):
     def __init__(self, df):
@@ -66,7 +62,6 @@ class LabelPairs(torch.utils.data.Dataset):
     
     def __len__(self):
         return len(self.label)
-
 class NodeBatch(torch.utils.data.Dataset):
     def __init__(self, nodes):
         self.nodes = torch.from_numpy(nodes)
@@ -473,7 +468,6 @@ class HetAttn(nn.Module):
                                                     drop_last=False)
         y, attn_res = self.calc_from_loader(dataloader, x, device)
         return y, attn_res
-        
 class Model(nn.Module):
     def __init__(self, args):
         super().__init__()
@@ -651,7 +645,6 @@ class Model(nn.Module):
         elif self.combine_type == 'pos':
             sub_embs = embs[0][nids].to(device)
             return sub_embs
-
 class ScorePredictor(nn.Module):
     def __init__(self, args, **params):
         super().__init__()
