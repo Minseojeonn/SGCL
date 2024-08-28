@@ -291,7 +291,7 @@ def generate_stru_status_graph(g, args):
     
     for etype in edge_types:
         etype_edges = g.edges(etype=etype)
-        edge_mask = generate_mask(args.mask_ratio, row=1, column=len(etype_edges[0]))
+        edge_mask = generate_mask(args.mask_ratio, row=1, column=len(etype_edges[0])).squeeze()
         
         # delete edges
         drop_eids = torch.arange(0,len(etype_edges[0]))[edge_mask==0]

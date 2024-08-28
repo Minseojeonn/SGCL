@@ -6,7 +6,7 @@ def parsing():
     parser.add_argument('--dataset_name', type=str, default='bonanza', help='Dataset name')
     parser.add_argument('--input_dim', type=int, default=16, help='Input dimension')    
     parser.add_argument('--device', type=str, default='cuda:0', help='Device')  
-    parser.add_argument('--num_epochs', type=int, default=100, help='Number of epochs')
+    parser.add_argument('--num_epochs', type=int, default=1, help='Number of epochs')
     parser.add_argument('--lr', type=float, default=0.0005, help='Learning rate')
     parser.add_argument('--num_layers', type=int, default=2, help='Number of layers')
     parser.add_argument('--tao', type=float, default=0.5, help='Temperature')
